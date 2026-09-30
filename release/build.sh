@@ -18,9 +18,22 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 export PATH="$HOME/.platformio/penv/bin:$PATH"
 
-CARD_VER="$(git -C "$ROOT/cardputer" describe --tags --always 2>/dev/null || echo dev)"
-ESP_VER="$(git -C "$ROOT/cams3/espnow" describe --tags --always 2>/dev/null || echo dev)"
-WIFI_VER="$(git -C "$ROOT/cams3/wifi" describe --tags --always 2>/dev/null || echo dev)"
+# ── 版本号来源: 各子项目的 VERSION 文件 (权威) ──
+# 不用 git describe 的原因: 公开仓库里三端共用一个 release tag, describe 会把三端都报成
+# 同一个版本号 (发送端 VERSION 被写成 v0.8.8)。VERSION 文件让开发树与克隆树得到同一串。
+ver_of() {  # $1 = 子项目相对路径
+  [ -f "$ROOT/$1/VERSION" ] && head -1 "$ROOT/$1/VERSION" || echo dev
+}
+CARD_VER="$(ver_of cardputer)"
+ESP_VER="$(ver_of cams3/espnow)"
+WIFI_VER="$(ver_of cams3/wifi)"
+# tag 未指向 HEAD 时只告警 (工作树有未提交改动/未打 tag), 不影响版本串
+for p in cardputer cams3/espnow cams3/wifi; do
+  t="$(git -C "$ROOT/$p" describe --tags --abbrev=0 2>/dev/null || true)"
+  if [ -n "$t" ] && [ "$(git -C "$ROOT/$p" rev-parse "$t" 2>/dev/null)" != "$(git -C "$ROOT/$p" rev-parse HEAD 2>/dev/null)" ]; then
+    echo "  ⚠ $p: tag $t 不在 HEAD 上 (版本串仍按 VERSION 文件: $(ver_of $p))"
+  fi
+done
 
 echo "═══ GBCAMS Release Build ═══"
 echo "  cardputer : $CARD_VER"
