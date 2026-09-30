@@ -11,9 +11,9 @@
 
 | 装到哪台设备 / Target | 镜像 / Image | 版本 | SHA256 (前 16) |
 |---|---|---|---|
-| **M5Cardputer** (接收端 Receiver) | `cardputer/firmware.factory.bin` (1,596,160 B) | v0.8.8 | `2f28da03eff73aba…` |
-| **UnitCamS3-5MP** (发送端 Sender, 推荐) | `cams3/firmware.factory.bin` (1,058,320 B) | v0.0.9 | `53b8dccf0bf056d0…` |
-| **UnitCamS3-5MP** (兼容官方 App 的发送端) | `cams3-wifi/firmware.factory.bin` (1,094,304 B) | v0.0.1 | `095d6f77dea9ee20…` |
+| **M5Cardputer** (接收端 Receiver) | `cardputer/firmware.factory.bin` (1,596,064 B) | v0.8.8 | `99b475136834bbb7…` |
+| **UnitCamS3-5MP** (发送端 Sender, 推荐) | `cams3/firmware.factory.bin` (1,058,320 B) | v0.0.9 | `fe21f1963adf6efe…` |
+| **UnitCamS3-5MP** (兼容官方 App 的发送端) | `cams3-wifi/firmware.factory.bin` (1,094,304 B) | v0.0.1 | `54a2be9b7d63578c…` |
 
 封面 / Covers: `<target>/cover-320x200.png` (320×200, M5Burner 规格)
 校验值 / Checksums: `<target>/firmware.factory.bin.sha256`

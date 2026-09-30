@@ -130,7 +130,7 @@ than raw bytes.
 ## Resource budget (receiver, M5Cardputer)
 
 The Cardputer has **no PSRAM**, so everything is budgeted against DRAM. Current release image:
-**1,596,160 B** for the merged receiver image, of which the embedded `efontCN_12` Chinese font is
+**1,596,064 B** for the merged receiver image, of which the embedded `efontCN_12` Chinese font is
 ~151 KB. Adding a large font, an extra framebuffer or a bigger reassembly buffer will not fit without
 giving something up — measure before you assume.
 

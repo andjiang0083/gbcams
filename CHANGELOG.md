@@ -2,15 +2,26 @@
 
 > 项目代号 **GBCAMS**（2026-09-30 起统一；旧称 Cardputer Camera / Cardputer GB Cam / Cardputer GameBoy Cam 都是它）
 
-> 顶层仓库管理项目级资产;固件变更详见各子仓库
+> 项目级资产记录;固件变更详见各固件目录
 > (`cardputer/` 接收端, `cams3/espnow/` + `cams3/wifi/` 发送端)。
 
-## [v0.8.8] - 2026-09-30 (候选发行包 — 待真机验证)  🏁 里程碑
+## [v0.8.8] - 2026-09-30 🏁 里程碑 · 首个公开发布 (Released)
 
 > **里程碑 (2026-09-30, 用户拍板)**: 取景 UI 定稿 (画面靠左 180×135 + 右侧 60px 侧栏)、
 > help 体系成型 (中英双语 5 页: 取景 3 + 相册 2, 含状态诊断页)、丢帧"卡一下"消除 (软接收)。
 > 画面 / 侧栏 / HUD / 帮助 四块布局自此稳定, 后续版本只做增量, 不再整页重排。
 
+
+### Released (开源首发 2026-09-30)
+- **仓库公开**: https://github.com/andjiang0083/gbcams (MIT)。首个公开版本, 三端固件均已在真机验证。
+- **发布件 (GitHub Release `v0.8.8`, merged 全镜像, flash_mode=dio)**:
+  - 接收端 `gbcams-cardputer-v0.8.8.factory.bin` — 1,596,064 B — `99b475136834bbb7…`
+  - 发送端 `gbcams-sender-espnow-v0.0.9.factory.bin` — 1,058,320 B — `fe21f1963adf6efe…`
+  - 发送端 `gbcams-sender-aphttp-v0.0.1.factory.bin` — 1,094,304 B — `54a2be9b7d63578c…`
+- **可复现构建**: 依赖钉版 (M5Unified 0.2.21 / M5GFX 0.2.28 / M5Cardputer 1.1.1 / IRremote 4.7.1 /
+  esp32-camera v2.0.0), 版本号改由各子项目 `VERSION` 文件提供 (公开仓三端共用一个 tag,
+  `git describe` 会把发送端也报成接收端版本号)。发布件由仓库源码在全新克隆中构建后上传。
+- 公开仓不含二进制 (走 Release 附件); `.pio/`、日志、SD 备份不入库。
 
 取景布局定稿 (侧栏) + 人像模式移除 + help 体系重做 (中英双语) + 丢帧软接收。
 所有改动都能在屏幕上验收, 不依赖串口。
