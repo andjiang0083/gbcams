@@ -1,0 +1,71 @@
+[
+  {
+    "_id": "gbcams-cams3",
+    "name": "GBCAMS Sender ESP-NOW (UnitCamS3-5MP)",
+    "description": "[GBCAMS] ESP-NOW sender firmware for UnitCamS3-5MP. Sends MJPEG frames over ESP-NOW unicast (54Mbps PHY) to Cardputer receiver. Auto-discovery via beacon. ESP-NOW v2.0 large packets: ~25fps capture, 12KB frames in 9 packets (5.8x fewer than v1), ~4-5x lower frame-loss exposure.",
+    "author": "andjiang",
+    "category": "timercam",
+    "versions": [
+      {
+        "version": "0.0.9",
+        "published_at": "2026-09-30",
+        "file": "cams3/firmware.factory.bin",
+        "published": true,
+        "change_log": "WiFi STA 启动加 5s 超时重试 (原来无界阻塞: 射频校准失败时固件永久卡在 setup, LED 亮但无流无日志) · 版本串修正 (一直错报 v0.0.7) · 启动打印协议标识 proto 2.0"
+      },
+      {
+        "version": "0.0.8",
+        "published_at": "2026-08-25",
+        "file": "cams3/firmware.factory.bin",
+        "published": true,
+        "change_log": "ESP-NOW v2.0 大包: PKT_DATA_MAX 240→1450B (12KB 帧 52→9 包, 帧丢失暴露面降 ~4-5×) + pacing 200→280µs (> 单包空中时长, 防队列积压). 含 v0.0.7 暗光增强调参 (mega_ccm 真实寄存器链路)"
+      }
+    ]
+  },
+  {
+    "_id": "gbcams-cams3-wifi",
+    "name": "GBCAMS Sender AP-HTTP (UnitCamS3-5MP)",
+    "description": "[GBCAMS] AP-HTTP sender firmware for UnitCamS3-5MP. Same SSID/API as stock firmware (UnitCamS3-WiFi, /api/v1/stream), with camera reset + triple buffering for ~12fps. Use when Cardputer detects the stock-AP path.",
+    "author": "andjiang",
+    "category": "timercam",
+    "versions": [
+      {
+        "version": "0.0.1",
+        "published_at": "2026-08-01",
+        "file": "cams3-wifi/firmware.factory.bin",
+        "published": true,
+        "change_log": "Stock-AP compatible MJPEG stream with camera reset and triple buffer"
+      }
+    ]
+  },
+  {
+    "_id": "gbcams-cardputer",
+    "name": "GBCAMS Receiver (M5Cardputer)",
+    "description": "Wireless camera viewfinder for M5Cardputer (GBCAMS receiver). Auto-detects CAMS3 firmware: ESP-NOW (blue label, v2.0 large packets) or stock AP-HTTP (yellow label, 12fps). Side-column HUD viewfinder (image 180x135 left + 60px status column), 9 pixel filters (incl. DMG), 4 pixel frames, race-free SD capture, photo gallery (batch delete, favorites, compare, slideshow), bilingual CN/EN help pages (h in both viewfinder and gallery).",
+    "author": "andjiang",
+    "category": "cardputer",
+    "versions": [
+      {
+        "version": "0.8.8",
+        "published_at": "2026-09-30",
+        "file": "cardputer/firmware.factory.bin",
+        "published": true,
+        "change_log": "侧栏取景定稿 + 中英双语 help + 丢帧软接收。①取景: 画面 180×135 靠左 + 右侧 60px 侧栏 HUD (滤镜/FRM+mini/EV/模式/FPS/DROP/拍照反馈/h help), 修掉 v0.8.7 黑边里 HUD 残影 (根因: 1.125× 只覆盖 x=0..179, 侧栏没清) ②移除人像模式 (v 键释放, 省 3-6ms/帧) ③help 重做: 取景新增 h (3 页: 键位/滤镜相框对照表/状态), 相册 2 页, 统一版式 + M5GFX 内置 efontCN_12 中文 (固件 +151KB) ④软接收: 只缺 1 块时补帧不丢弃 (消掉真机反馈的\"卡一下\"), 丢帧拆 T/O/S 计数 ⑤真机反馈修复: 中英混排垂直对齐 (从 M5GFX 字库数据量出墨水盒 — Font0 大写 y+1..y+6 中心 +3.5 / efontCN_12 汉字 y+0..y+11 中心 +5.5 → 汉字绘制偏移 +2 改 -2, 原值凭手感实机偏 4px) + 全界面键位大写 (帮助页/侧栏 H HELP/相册提示栏)"
+      },
+      {
+        "version": "0.8.7",
+        "published_at": "2026-09-30",
+        "file": "cardputer/firmware.factory.bin",
+        "published": true,
+        "change_log": "代码 review 修复版 (P0×4 + P1×10): ①ESP-NOW 重组状态改回调独占 (消除跨核竞态丢帧) ②HTTP 模式交出帧后立即收手 (修同轮解析第二帧覆写渲染缓冲→偶发花屏) ③键盘全改边沿检测 + NVS 单 blob 原子写/停手 3s 落盘 (修按住键反复触发与闪存磨损) ④drawBmpTo 行缓冲 srcW 夹到 160 (修 SD 上 >160px BMP 的栈越界读) ⑤帧超限整帧丢弃 + 包序号去重 ⑥相册查看页加画面指纹缓存 (原来静止看图也 30 次/秒重读 SD+解码) ⑦取景改为整幅 1.125× (所见即所得, 不再裁掉上下 25%) ⑧渲染分派点合一 + 片尾 HUD 掉帧事件提示 + 等待画面启动信息行 (版本/PSRAM)"
+      },
+      {
+        "version": "0.8.5",
+        "published_at": "2026-08-25",
+        "file": "cardputer/firmware.factory.bin",
+        "published": true,
+        "change_log": "像素相框 (v0.8.5): 0 开关, ,/ 循环 4 款 (DMG白点阵/GBC紫/CRT双线/Polaroid留白) · 与滤镜正交 36 种组合 · 图片完整性优先(边框长在照片外围, 内容152×112居中不丢像素) · HUD mini 预览 · NVS 记忆. 含 0.8.4 相册全套(批量删/收藏/双格式对比/幻灯片/帮助页) + v2.0 大包"
+      }
+    ]
+  }
+]

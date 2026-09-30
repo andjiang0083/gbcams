@@ -1,0 +1,70 @@
+name: Bug report / 缺陷报告
+description: Something does not work / 有东西不工作
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请把能定位问题的证据填全。硬件类问题里"自动重启"和"必须断电才能恢复"是两类完全不同的根因，所以这项必填。
+  - type: dropdown
+    id: which_end
+    attributes:
+      label: Which end? / 哪一端
+      options:
+        - Receiver — M5Cardputer / 接收端
+        - Sender — UnitCamS3-5MP ESP-NOW / 发送端 (ESP-NOW)
+        - Sender — UnitCamS3-5MP AP-HTTP / 发送端 (AP-HTTP)
+        - Both / tooling / 两端都涉及或工具链
+    validations:
+      required: true
+  - type: input
+    id: fw_version
+    attributes:
+      label: Firmware version / 固件版本
+      description: 串口 boot log 第一行（形如 `GBCAMS v0.8.8 (proto 2.0)`）或 M5Burner 里的版本号
+      placeholder: "GBCAMS v0.8.8 (proto 2.0)"
+    validations:
+      required: true
+  - type: dropdown
+    id: recovery
+    attributes:
+      label: Does it recover by itself? / 会自己恢复吗
+      options:
+        - Recovers after a few seconds / 几秒后自己恢复
+        - Recovers only after pressing RST or power cycle / 只能按 RST 或断电恢复
+        - Never recovers until reflashed / 重刷前一直是坏的
+        - Not a crash — wrong behaviour only / 不崩，只是行为不对
+    validations:
+      required: true
+  - type: input
+    id: sd
+    attributes:
+      label: SD card / SD 卡
+      description: 型号 + 容量 + 文件系统（拍照/相册相关的问题必填）
+      placeholder: "SanDisk 32GB FAT32"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens / 现象
+      description: 屏幕上看到什么？侧栏的 FPS / DROP 数字是多少？帮助页 3/3 的 T/O/S 计数是多少？
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce / 怎么复现
+      description: 具体步骤；如果是滤镜/相框/曝光相关，写明键位组合（例：滤镜 8 + 相框 CRT + EV+1）
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected / 期望
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Build environment (only if you built it yourself) / 自编译者填
+      placeholder: "PlatformIO 6.x, espressif32 platform 6.x, macOS 15"

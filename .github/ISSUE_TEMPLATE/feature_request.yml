@@ -1,0 +1,42 @@
+name: Feature request / 功能建议
+description: An idea for the project / 想要的功能
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先说清"解决什么问题"，再说想要什么形态 —— 这比直接给实现更能对齐。也欢迎先看 ROADMAP，避免重复。
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part / 哪部分
+      options:
+        - Receiver UI / 接收端界面
+        - Filters & frames / 滤镜与相框
+        - Gallery & SD / 相册与 SD
+        - Link & throughput / 传输与帧率
+        - Docs / tooling / 文档或工具链
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 问题
+      description: 现在哪里不顺手？在什么场景下？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal / 建议形态
+      description: 可以附手画草图或参考图。有取舍也写出来（例：更省电 vs 更高帧率）。
+    validations:
+      required: true
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Are you up for it / 你能上手吗
+      options:
+        - label: I can test on real hardware / 我能在真机上测
+        - label: I can send a PR / 我可以提 PR

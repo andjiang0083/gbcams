@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Build & flashing guide / 构建与刷机指南
+    url: https://github.com/andjiang0083/gbcams/blob/main/BUILDING.md
+    about: 多数"刷完黑屏""连不上"的问题在里面有对照表
+  - name: Roadmap / 路线图
+    url: https://github.com/andjiang0083/gbcams/blob/main/ROADMAP.md
+    about: 想做的东西先看这里，避免重复

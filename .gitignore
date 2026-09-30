@@ -1,0 +1,21 @@
+# 构建产物 / 缓存
+.pio/
+.pioenvs/
+.pioide/
+build/
+*.o
+*.d
+
+# 固件二进制: 不进 git, 走 GitHub Release 附件 (sha256 留在仓库里)
+release/*/firmware.factory.bin
+*.bin
+!*.bin.sha256
+
+# 系统 / 编辑器
+.DS_Store
+*.swp
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+*.log
