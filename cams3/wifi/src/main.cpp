@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 /**
  * CAMS3-5MP — Simple MJPEG Stream (blocking WebServer)
  *

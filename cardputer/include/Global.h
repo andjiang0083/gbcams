@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 #ifndef GLOBAL_H
 #define GLOBAL_H
 

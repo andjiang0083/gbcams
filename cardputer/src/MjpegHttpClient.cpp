@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 #include "MjpegHttpClient.h"
 #include "Global.h"   // capFreeze (v0.8.1 拍照冻结)
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 # ═══════════════════════════════════════════════════════════════
 # GBCAMS — M5Burner 封面生成 (320×200, 官方固件源规格)
 #

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 #include "UIManager.h"
 #include "Global.h"
 

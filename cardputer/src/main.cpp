@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 andjiang0083
+ */
 /**
  * GBCAMS 接收端 — Dual-mode: ESP-NOW / AP-HTTP MJPEG
  *

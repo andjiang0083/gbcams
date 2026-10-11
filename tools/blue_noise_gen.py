@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 andjiang0083
 """Generate 64x64 blue-noise dither matrix — filtered-white-noise + rank.
 
 Practical blue-noise approximation (no numpy needed):
