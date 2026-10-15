@@ -329,6 +329,30 @@ static void drawOverlay(const char *label, uint16_t labelColor) {
   mainCanvas.setCursor(x, 124); mainCanvas.print("H HELP");
 }
 
+// ── v0.8.9-a1: zoom 索引表 (A轮唯一功能改动) ──
+// pushRotateZoom(angle恒0, scale恒1.125) 走通用仿射路径 (每像素浮点矩阵);
+// 这里预计算 dst→src 整数最近邻索引, 双层循环纯搬运 —
+// ⚠️ 像素值原样拷贝, 不碰任何量化数学 (滤镜循环保持 v0.8.8 原样)。
+#define ZOOM_W 180   // (int)(160 * VIEW_SCALE)
+#define ZOOM_H 135   // (int)(120 * VIEW_SCALE)
+static uint8_t s_zoom_x[ZOOM_W];   // dst x → src x (0..159)
+static uint8_t s_zoom_y[ZOOM_H];   // dst y → src y (0..119)
+static bool    s_zoom_ready = false;
+
+static void build_zoom_maps() {
+  // LGFX pushRotateZoom(c=(90,67), s=1.125): 缩放幅面左上角 = (0, -0.5)
+  // → src = floor((dst + 0.5 - topLeft)/s), 截断即最近邻
+  for (int dx = 0; dx < ZOOM_W; dx++) {
+    int v = (int)((dx + 0.5f) / VIEW_SCALE);
+    s_zoom_x[dx] = (uint8_t)(v < 0 ? 0 : (v > 159 ? 159 : v));
+  }
+  for (int dy = 0; dy < ZOOM_H; dy++) {
+    int v = (int)((dy + 1.0f) / VIEW_SCALE);   // topLeft_y = -0.5
+    s_zoom_y[dy] = (uint8_t)(v < 0 ? 0 : (v > 119 ? 119 : v));
+  }
+  s_zoom_ready = true;
+}
+
 // ── v0.8.7: 取景渲染的公共首尾 (原来 6 份渲染函数各自复制一遍; 改一处要同步 6 处) ──
 // 首: 按 inset 清留白 + 解码 JPEG 到 canvas (取景 0.5× → 160×120; 拍照缩进用自动适配)
 static bool beginFilter(uint8_t *jpeg_buf, size_t jpeg_len, int in) {
@@ -341,7 +365,19 @@ static bool beginFilter(uint8_t *jpeg_buf, size_t jpeg_len, int in) {
 // x=180..239 会保留上一帧内容 (而滤镜名/FPS 恰好画在那条带里) → 必须先清。
 static void finishFilter(const char *label, uint16_t color) {
   mainCanvas.fillRect(SIDEBAR_X, 0, mainCanvas.width() - SIDEBAR_X, mainCanvas.height(), TFT_BLACK);
-  canvas.pushRotateZoom(&mainCanvas, VIEW_CX, mainCanvas.height() / 2, 0, VIEW_SCALE, VIEW_SCALE);
+  // v0.8.9-a1: pushRotateZoom → 查表整数拷贝 (几何一致, 像素原样搬运)
+  if (!s_zoom_ready) build_zoom_maps();
+  {
+    const uint16_t* src = (const uint16_t*)canvas.getBuffer();
+    uint16_t* dst = (uint16_t*)mainCanvas.getBuffer();
+    const int SW = canvas.width();      // 160
+    const int DW = mainCanvas.width();  // 240
+    for (int dy = 0; dy < ZOOM_H; dy++) {
+      const uint16_t* sr = src + (size_t)s_zoom_y[dy] * SW;
+      uint16_t* dr = dst + (size_t)dy * DW;
+      for (int dx = 0; dx < ZOOM_W; dx++) dr[dx] = sr[s_zoom_x[dx]];
+    }
+  }
   drawOverlay(label, color);
   mainCanvas.pushSprite(&M5Cardputer.Display, 0, 0);
 }
