@@ -62,10 +62,24 @@
 #define ESPNOW_CHANNEL   6
 // v0.0.9: 协议标识 — 与 cardputer/src/main.cpp 的 GBCAM_PROTO_VER 保持一致
 // (两端启动各打印一次, 现场可一眼对齐; 改动包长/包头时两处同步)
-#define GBCAM_PROTO_VER "2.0"
+// v0.1.0: proto 2.1 — beacon [0x55][0x21][ch] 信道协商; 未发现阶段在候选信道跳频巡逻
+#define GBCAM_PROTO_VER "2.1"
 #define PKT_DATA_MAX  1450      // v2.0 大包 (上限 1470, 留 20B 余量; v0.0.8)
 #define HEADER_LEN       8           // frame_id:4 + total:2 + index:2
 #define BEACON_MAGIC     0x55        // Cardputer's "I'm here" beacon
+#define BEACON_V2_MARK   0x21        // proto 2.1: beacon[1] — [2]=期望信道
+#define CH_HOP_MS        2000        // 未发现阶段: 候选信道巡逻间隔
+#define CH_LOCK_SILENT_MS 8000      // 已锁定但 beacon 静默超时 → 解锁重新巡逻 (v0.1.1: 15s→8s)
+#define CH_SWITCH_MIN_MS  4000       // 两次切信道最小间隔 (防振荡)
+#define TX_STUCK_FRAMES   10        // v0.1.1: 连续 N 帧一包都发不出 → TX 队列卡死自愈
+
+// ── v0.8.9-p15: 信道协商状态 (接收端主导, beacon 携带) ──
+static uint8_t s_ch = ESPNOW_CHANNEL;              // 当前信道
+static const uint8_t CH_CAND[3] = {6, 1, 11};     // 候选 (与 Cardputer 一致; ch6 首发)
+static int           s_hop_idx = 0;
+static unsigned long s_hop_last = 0;
+static unsigned long s_beacon_seen = 0;            // 最近一次收到 beacon
+static unsigned long s_ch_switched = 0;            // 最近一次切信道
 
 // ── 54Mbps PHY Rate Config ──
 static const esp_now_rate_config_t s_rate54 = {
@@ -81,6 +95,9 @@ static const esp_now_rate_config_t s_rate54 = {
 
 // ── Forward declarations ──
 class CamUnicastPeer;
+static void applyChannel(uint8_t c, bool respectLimit = true);
+static void resetEspNowLink();
+void on_discovery(const esp_now_recv_info_t *info, const uint8_t *data, int len, void *arg);
 
 // ── Broadcast Peer (used until Cardputer is discovered) ──
 class CamBroadcaster : public ESP_NOW_Peer {
@@ -119,6 +136,18 @@ public:
     : ESP_NOW_Peer(mac, ch, WIFI_IF_STA, nullptr, (esp_now_rate_config_t*)&s_rate54) {}
   ~CamUnicastPeer() { remove(); }
   bool begin() { return add(); }
+  void remove_peer() { remove(); }
+
+  // v0.1.0: 锁定后 beacon 走这里 (src 已是已知 peer) — v2.1 切信道请求跟随
+  void onReceive(const uint8_t *data, size_t len, bool broadcast) override {
+    if (len >= 1 && data[0] == BEACON_MAGIC) {
+      s_beacon_seen = millis();   // beacon 心跳 (锁保活依据)
+      if (len >= 3 && data[1] == BEACON_V2_MARK) {
+        uint8_t want = data[2];
+        if (want >= 1 && want <= 13 && want != s_ch) applyChannel(want);
+      }
+    }
+  }
 
   /// Send a frame split into ESP-NOW packets.
   int send_frame(const uint8_t *jpeg, size_t len, uint32_t frame_id) {
@@ -201,26 +230,80 @@ static void led_blink_tick(unsigned long now) {
   s_led_state = LED_BURST_ON;
 }
 
+// ── v0.1.0: 切信道 (beacon 跟随 / 未发现阶段巡逻共用) — 重建 peer + radio ──
+static void applyChannel(uint8_t c, bool respectLimit) {
+  if (c < 1 || c > 13 || c == s_ch) return;
+  unsigned long now = millis();
+  if (respectLimit && now - s_ch_switched < CH_SWITCH_MIN_MS) return;   // 防振荡
+  s_ch_switched = now;
+  if (s_unicast) { s_unicast->remove_peer(); delete s_unicast; s_unicast = nullptr; }
+  if (s_broadcaster) { s_broadcaster->remove_peer(); delete s_broadcaster; s_broadcaster = nullptr; }
+  WiFi.setChannel(c);
+  s_ch = c;
+  for (int i = 0; i < 3; i++) if (CH_CAND[i] == c) s_hop_idx = i;   // 巡逻相位对齐
+  if (s_cardputer_known) {
+    // 已锁定 → 新信道上直接重建单播 (不退回广播, 避免 3s 质量坑)
+    s_unicast = new CamUnicastPeer(s_cardputer_mac, s_ch);
+    if (!s_unicast->begin()) { delete s_unicast; s_unicast = nullptr; }
+  } else {
+    s_broadcaster = new CamBroadcaster(s_ch);
+    if (!s_broadcaster->begin()) Serial.println("[ch] broadcaster add FAIL");
+  }
+  s_hop_last = now;   // 切完重置巡逻节拍
+  Serial.printf("[ch] → %d (peers rebuilt, %s)\n", c,
+                s_cardputer_known ? "UNICAST" : "BROADCAST");
+}
+
+// v0.1.1: TX 队列卡死自愈 — 接收端离开信道后, 单播帧 MAC 层无限重传把 espnow
+// 发送队列灌满 (send(): Out of memory), 重建 peer/切信道都清不掉 →
+// esp_now_deinit+begin 整体重载 (队列随 deinit 清空), 回巡逻态重新发现
+static void resetEspNowLink() {
+  Serial.println("[link] TX stuck → espnow full reload");
+  if (s_unicast) { s_unicast->remove_peer(); delete s_unicast; s_unicast = nullptr; }
+  if (s_broadcaster) { s_broadcaster->remove_peer(); delete s_broadcaster; s_broadcaster = nullptr; }
+  ESP_NOW.end(); delay(50);
+  if (!ESP_NOW.begin()) { Serial.println("[link] begin FAIL"); return; }
+  ESP_NOW.onNewPeer(on_discovery, nullptr);
+  WiFi.setChannel(s_ch);   // radio 重载后钉回当前信道 (STA 未停, 但保险起见)
+  s_broadcaster = new CamBroadcaster(s_ch);
+  if (!s_broadcaster->begin()) Serial.println("[link] broadcaster FAIL");
+  s_cardputer_known = false;             // peer 不在是最可能的根因 → 回巡逻
+  s_hop_last = millis() - CH_HOP_MS;   // 下一轮立即跳信道
+}
+
 // ── ESP-NOW Discovery Callback ──
 // Fires for every packet from an unknown sender.
 // Catches Cardputer's beacon and extracts its MAC.
 void on_discovery(const esp_now_recv_info_t *info, const uint8_t *data, int len, void *arg) {
-  if (s_cardputer_known) return;  // already discovered
+  if (len < 1 || data[0] != BEACON_MAGIC) return;
+  s_beacon_seen = millis();
 
-  // Look for Cardputer's beacon (1-byte magic)
-  if (len >= 1 && data[0] == BEACON_MAGIC) {
+  // v0.1.0: proto2.1 beacon 携带期望信道 → 先跟随 (旧版 1B beacon: 原地锁定, 行为同前)
+  if (!s_cardputer_known && len >= 3 && data[1] == BEACON_V2_MARK) {
+    uint8_t want = data[2];
+    if (want >= 1 && want <= 13) applyChannel(want);
+  }
+
+  if (!s_cardputer_known) {
     memcpy(s_cardputer_mac, info->src_addr, 6);
     s_cardputer_known = true;
-    Serial.printf("[disc] Cardputer found: " MACSTR "\n", MAC2STR(s_cardputer_mac));
+    Serial.printf("[disc] Cardputer found (ch%d): " MACSTR "\n", s_ch, MAC2STR(s_cardputer_mac));
 
     // Switch from broadcast to unicast with 54Mbps rate
-    if (s_broadcaster) s_broadcaster->remove_peer();
-    static CamUnicastPeer peer(s_cardputer_mac, ESPNOW_CHANNEL);
-    s_unicast = &peer;
-    if (peer.begin()) {
-      Serial.println("[disc] Unicast peer added @ 54Mbps");
+    if (s_broadcaster) { s_broadcaster->remove_peer(); delete s_broadcaster; s_broadcaster = nullptr; }
+    // v0.1.0: 堆分配 — 信道切换时需重建 (static 实例钉死首次构造的 ch 配置)
+    s_unicast = new CamUnicastPeer(s_cardputer_mac, s_ch);
+    Serial.println(s_unicast->begin() ? "[disc] Unicast peer added @ 54Mbps"
+                                       : "[disc] Unicast peer add FAIL");
+  } else if (!s_unicast) {
+    // 解锁后重新发现 (信道可能已变) → 广播 peer 已在 applyChannel 重建
+    s_unicast = new CamUnicastPeer(s_cardputer_mac, s_ch);
+    if (s_unicast->begin()) {
+      if (s_broadcaster) { s_broadcaster->remove_peer(); delete s_broadcaster; s_broadcaster = nullptr; }
+      Serial.println("[disc] Unicast re-added @ 54Mbps");
     } else {
-      Serial.println("[disc] Unicast peer add FAIL");
+      s_unicast = nullptr;
+      Serial.println("[disc] Unicast re-add FAIL");
     }
   }
 }
@@ -229,7 +312,8 @@ void on_discovery(const esp_now_recv_info_t *info, const uint8_t *data, int len,
 void setup() {
   Serial.begin(115200); delay(100);
   // v0.0.9: 版本串此前一直停在 v0.0.7 (实际已是 v0.0.8) — 改为与 tag 同步, 并打印协议/包长
-  Serial.printf("\n[GBCAMS] UnitCamS3 ESP-NOW Sender v0.0.9 (proto %s, PKT_DATA_MAX %d)\n",
+  // v0.1.1: TX 队列卡死自愈 (Out-of-memory 灌满 → espnow deinit+begin 重载)
+  Serial.printf("\n[GBCAMS] UnitCamS3 ESP-NOW Sender v0.1.1 (proto %s, PKT_DATA_MAX %d)\n",
                 GBCAM_PROTO_VER, PKT_DATA_MAX);
   Serial.printf("PSRAM: %d KB\n", ESP.getPsramSize() / 1024);
 
@@ -335,12 +419,13 @@ void setup() {
   ESP_NOW.onNewPeer(on_discovery, nullptr);
 
   // ── Start in broadcast mode (switches to unicast on discovery) ──
-  static CamBroadcaster broadcaster(ESPNOW_CHANNEL);
-  s_broadcaster = &broadcaster;
-  if (!broadcaster.begin()) {
+  // v0.1.0: 堆分配 + 未发现阶段候选信道巡逻 (见 loop)
+  s_broadcaster = new CamBroadcaster(s_ch);
+  if (!s_broadcaster->begin()) {
     Serial.println("Broadcast peer add FAIL");
   } else {
-    Serial.println("Broadcast mode active — waiting for Cardputer beacon...");
+    Serial.printf("Broadcast mode active on ch%d — hopping %d/%d/%d patrol, waiting beacon...\n",
+                  s_ch, CH_CAND[0], CH_CAND[1], CH_CAND[2]);
   }
 
   s_t0 = millis();
@@ -358,16 +443,40 @@ void loop() {
   // LED blink (non-blocking state machine)
   led_blink_tick(now);
 
+  // ── v0.1.0: 信道巡逻与锁维护 (P1-5 接收端主导协商) ──
+  if (!s_cardputer_known) {
+    // 未发现: 候选信道跳频巡逻 — Cardputer beacon 可能在我们巡逻到的任一信道上
+    if (now - s_hop_last >= CH_HOP_MS) {
+      uint8_t c = CH_CAND[(s_hop_idx + 1) % 3];
+      if (c != s_ch) applyChannel(c, false);   // 巡逻不受防振荡限约束 (开机阶段要快收敛)
+      else s_hop_last = now;
+    }
+  } else if (now - s_beacon_seen >= CH_LOCK_SILENT_MS) {
+    // 已锁定但 beacon 静默 15s → 接收端离开/换信道: 解锁回巡逻 (beacon 每 3s 一次, 15s=连丢5次)
+    Serial.println("[ch] beacon silent 15s → unlock, resume patrol");
+    if (s_unicast) { s_unicast->remove_peer(); delete s_unicast; s_unicast = nullptr; }
+    s_cardputer_known = false;
+    if (!s_broadcaster) { s_broadcaster = new CamBroadcaster(s_ch); s_broadcaster->begin(); }
+  }
+
   // Capture frame
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) { delay(1); return; }
 
   static uint32_t frame_id = 1;
 
+  // v0.1.1: 帧级发送失败计数 — 连续发不出 → TX 卡死自愈 (resetEspNowLink)
+  int sent = 0;
   if (s_cardputer_known && s_unicast) {
-    s_unicast->send_frame(fb->buf, fb->len, frame_id++);
+    sent = s_unicast->send_frame(fb->buf, fb->len, frame_id++);
   } else if (s_broadcaster) {
-    s_broadcaster->send_frame(fb->buf, fb->len, frame_id++);
+    sent = s_broadcaster->send_frame(fb->buf, fb->len, frame_id++);
+  }
+  static uint32_t s_tx_fail = 0;
+  if (sent == 0) {
+    if (++s_tx_fail >= TX_STUCK_FRAMES) { s_tx_fail = 0; resetEspNowLink(); }
+  } else {
+    s_tx_fail = 0;
   }
   esp_camera_fb_return(fb);
   s_frameCount++;

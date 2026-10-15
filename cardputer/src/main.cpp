@@ -62,7 +62,27 @@
 #define HTTP_RECONNECT_MAX   2      // HTTP 断流重连次数
 
 // v0.8.7: 协议版本 — 两端启动各打印一次, 现场对齐 (改包长/包头时同步 cams3/)
-#define GBCAM_PROTO_VER  "2.0"
+// v0.8.9-p15: 2.1 — beacon 扩为 [0x55][0x21][ch] (接收端主导信道协商; 旧发送端仍认 data[0]==0x55)
+#define GBCAM_PROTO_VER  "2.1"
+
+// ── v0.8.9-p15: 信道协商 (接收端主导; beacon 携带目标信道, 发送端跟随) ──
+static uint8_t s_ch = ESPNOW_CHANNEL;    // 当前信道 (扫描/手动可改)
+static bool    s_chScanned = false;      // 开机自动扫描已完成 (一次)
+static bool    s_chPinned  = false;      // [ ] 手动钉住 → 不再自动扫描
+static const uint8_t CH_CAND[3] = {6, 1, 11};   // 非重叠候选信道 (默认 ch6 优先)
+// HUD 可视化: 侧栏常驻 CHn, 切换后黄闪 3s (电池模式无串口时的现场反馈)
+volatile uint8_t  g_wifiCh = ESPNOW_CHANNEL;
+volatile uint32_t g_chFlashUntil = 0;
+
+static void setChannel(uint8_t c) {
+  if (c == s_ch) return;
+  uint8_t old = s_ch;
+  s_ch = c;
+  WiFi.setChannel(c);           // radio 跟随 (调用点均在 STA started 之后)
+  g_wifiCh = c;
+  g_chFlashUntil = millis() + 3000;   // 旧→新切换的现场可见性
+  Serial.printf("[ch] %d → %d\n", old, c);
+}
 
 // ── v0.8.7: 诊断计数 (事件式: 只在发生后的 5s 内提示, 不做常驻 UI) ──
 volatile uint32_t g_drop_frames     = 0;   // 丢帧总数 (超时 + 超限)
@@ -132,11 +152,13 @@ static MjpegHttpClient* s_mjpeg = nullptr;
 static int s_http_reconnect = 0;
 
 // ESP-NOW beacon 发送端 (Cardputer 宣告自己)
+// v0.8.9-p15: beacon [0x55][0x21][ch] — 第 3 字节 = 期望信道; 旧发送端只看 data[0] ✓兼容
+// beacon 改堆分配 (每次 enterEspNowListen 重建) — static 实例会把 peer 的 ch 配置钉死在首次构造值
 struct BeaconPeer : public ESP_NOW_Peer {
-  BeaconPeer() : ESP_NOW_Peer(ESP_NOW.BROADCAST_ADDR, ESPNOW_CHANNEL, WIFI_IF_STA, nullptr) {}
+  explicit BeaconPeer(uint8_t ch) : ESP_NOW_Peer(ESP_NOW.BROADCAST_ADDR, ch, WIFI_IF_STA, nullptr) {}
   bool begin() { return add(); }
   void remove_peer() { remove(); }   // 包装 protected remove()
-  void send_beacon() { uint8_t b = 0x55; send(&b, 1); }
+  void send_beacon() { uint8_t b[3] = {0x55, 0x21, s_ch}; send(b, 3); }
 };
 static BeaconPeer* s_beacon = nullptr;
 static unsigned long s_beacon_last = 0;
@@ -246,6 +268,7 @@ static void ensureSD() {
 static void teardownEspNow() {
   if (s_beacon) {
     s_beacon->remove_peer();
+    delete s_beacon;               // v0.8.9-p15: 堆分配 (信道可能已变, 必须重建)
     s_beacon = nullptr;
   }
   ESP_NOW.end();
@@ -331,18 +354,42 @@ static void setupHttpMode() {
 // 探测循环
 // ════════════════════════════════════════
 
+// v0.8.9-p15: WiFi 拥塞扫描 → 非重叠信道中选最干净的
+// 能量分 = Σ max(0, RSSI+85) (每个 AP); 当前信道有 -8 小加成 — 不明显更好不 hopping
+static uint8_t scanCleanChannel() {
+  int n = WiFi.scanNetworks();   // 阻塞 ~2-4s, 只在探测阶段调用
+  if (n <= 0) { WiFi.scanDelete(); return s_ch; }
+  int score[14] = {0};
+  for (int i = 0; i < n; i++) {
+    int ch = WiFi.channel(i), rssi = WiFi.RSSI(i);
+    if (ch >= 1 && ch <= 13) score[ch] += rssi > -85 ? (rssi + 85) : 0;
+    Serial.printf("[ch]   AP ch%-2d rssi %d\n", ch, rssi);
+  }
+  WiFi.scanDelete();
+  int best = s_ch, bestScore = score[s_ch] - 8;
+  for (int i = 0; i < 3; i++) {
+    int c = CH_CAND[i];
+    if (score[c] < bestScore) { bestScore = score[c]; best = c; }
+  }
+  Serial.printf("[ch] scan %d APs → ch1=%d ch6=%d ch11=%d, pick %d\n",
+                n, score[1], score[6], score[11], best);
+  return (uint8_t)best;
+}
+
 // 进入 ESP-NOW 监听态 (探测或正式模式的公共前置)
-// 保证 WiFi STA ch6 + ESP_NOW 已就绪, 并启动 beacon 宣告自己
+// 保证 WiFi STA ch=s_ch + ESP_NOW 已就绪, 并启动 beacon 宣告自己
 // (协议第 2 步: Cardputer boot 后主动发 beacon → CAMS3 切单播 54Mbps。
 //  1 字节广播 beacon 几乎必成功 — 不依赖概率性的广播完整帧)
+// v0.8.9-p15: 首次进入做一次信道扫描; beacon [3B] 携带 s_ch, 发送端跟随
 // 返回 true 成功; false 失败 → 调用方应转 WAIT_RETRY (避免空转卡死)
 static bool enterEspNowListen() {
   if (s_beacon) {
     s_beacon->remove_peer();
+    delete s_beacon;
     s_beacon = nullptr;
   }
   WiFi.mode(WIFI_STA);
-  WiFi.setChannel(ESPNOW_CHANNEL);
+  WiFi.setChannel(s_ch);
   unsigned long t0 = millis();
   while (!WiFi.STA.started()) {
     if (millis() - t0 > 5000) break;
@@ -353,6 +400,14 @@ static bool enterEspNowListen() {
     return false;
   }
   WiFi.setSleep(false);
+
+  // v0.8.9-p15: 开机一次 + stall 后重扫 (s_chScanned=false) — 选非重叠最干净信道
+  if (!s_chPinned && !s_chScanned) {
+    s_chScanned = true;
+    uint8_t c = scanCleanChannel();
+    if (c != s_ch) setChannel(c);   // radio+HUD 同步 (黄闪 3s)
+  }
+
   if (!ESP_NOW.begin()) {
     Serial.println("[espnow] enterEspNowListen: ESP_NOW.begin FAIL");
     return false;
@@ -360,10 +415,9 @@ static bool enterEspNowListen() {
   ESP_NOW.onNewPeer(on_espnow_recv, nullptr);
 
   // 探测阶段就发 beacon (500ms 延迟, v0.7.26 教训)
-  static BeaconPeer beacon;
-  s_beacon = &beacon;
+  s_beacon = new BeaconPeer(s_ch);
   s_beacon_last = millis() + BEACON_START_DELAY_MS;
-  beacon.begin();
+  s_beacon->begin();
   return true;
 }
 
@@ -515,6 +569,28 @@ static void handleCameraKeys() {
   if (UIManager::keyEdge('0')) { UIManager::frameOn = !UIManager::frameOn; saveFramePrefs(); }
   if (UIManager::keyEdge(',')) { UIManager::frameIdx = (UIManager::frameIdx + 3) % 4; saveFramePrefs(); }
   if (UIManager::keyEdge('/')) { UIManager::frameIdx = (UIManager::frameIdx + 1) % 4; saveFramePrefs(); }
+
+  // v0.8.9-p15: [ / ] 手动切信道 (候选 6→11→1 循环) — 钉住, 发送端经 beacon 跟随
+  {
+    bool chL = UIManager::keyEdge('[');
+    bool chR = UIManager::keyEdge(']');
+    if (chL || chR) {
+      int idx = 0;
+      for (int i = 0; i < 3; i++) if (CH_CAND[i] == s_ch) { idx = i; break; }
+      uint8_t want = CH_CAND[(idx + (chR ? 1 : 2)) % 3];
+      if (want != s_ch) {
+        setChannel(want);                       // radio+HUD 同步 (黄闪 3s)
+        s_chPinned = true; s_chScanned = true; // 钉住手动选择
+        teardownEspNow();
+        if (enterEspNowListen()) {          // 重建 radio + beacon(带新ch)
+          s_mode = MODE_DETECT_ESPNOW;      // 重新探测 — 等发送端跳过来
+        } else {
+          s_mode = MODE_WAIT_RETRY;
+        }
+        s_mode_start = millis();
+      }
+    }
+  }
   // v0.8.8: 人像模式整块移除 (v0.8.6 的失败产物 — 用户判定"失败产物"并要求删除)
   // 相机模式 v 键释放, 不做任何事; 相册模式 v 仍是"全部/收藏"视图切换
 
@@ -626,6 +702,10 @@ void loop() {
     if (s_ready_idx < 0 && now - s_mode_start > ESPNOW_STALL_MS &&
         now - s_last_frame_ms > ESPNOW_STALL_MS) {
       teardownEspNow();
+      // v0.8.9-c4: 连续两次 stall → 解除手动钉住回 auto (防钉死在发送端不在线的信道)
+      static uint8_t s_stall_cnt = 0;
+      if (++s_stall_cnt >= 2) { s_chPinned = false; s_stall_cnt = 0; }
+      if (!s_chPinned) s_chScanned = false;   // v0.8.9-p15: 重进监听时重扫信道
       s_mode = MODE_DETECT_SCAN;
       s_mode_start = now;
     }

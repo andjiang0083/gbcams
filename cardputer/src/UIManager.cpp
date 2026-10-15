@@ -106,7 +106,8 @@ static void build_palettes() {
 // "松键也触发一次"), 动作键 (滤镜/相框/人像/移文件) 因此会反复执行, 相册里甚至会
 // 一边导航一边搬文件。改为: 每轮一次 keyboard update → 位掩码上升沿; 导航键额外连发。
 // ════════════════════════════════════════
-static const char s_tracked[] = "0123456789abcdefghijklmnopqrstuvwxyz,/+=-";
+// v0.8.9-c2: 追加 '[' ']' — P1-5 手动切信道键 (bit41/42, 距特殊键 bit44-46 安全)
+static const char s_tracked[] = "0123456789abcdefghijklmnopqrstuvwxyz,/+=-[]";
 #define K_BIT_ENTER     (1ULL << 44)
 #define K_BIT_BACKSPACE (1ULL << 45)
 #define K_BIT_TAB       (1ULL << 46)
@@ -308,6 +309,18 @@ static void drawOverlay(const char *label, uint16_t labelColor) {
   snprintf(buf, sizeof(buf), "%.1fFPS", currentFps);
   mainCanvas.setTextColor(TFT_YELLOW, TFT_BLACK);
   mainCanvas.setCursor(x, 70); mainCanvas.print(buf);
+
+  // 5b) 信道 (v0.8.9-c1: P1-5 协商可视化 — 常驻 CHn, 切换后黄闪 3s)
+  {
+    extern volatile uint8_t  g_wifiCh;
+    extern volatile uint32_t g_chFlashUntil;
+    snprintf(buf, sizeof(buf), "CH%u", (unsigned)g_wifiCh);
+    uint16_t col = TFT_GREEN;                                  // 稳态: 绿
+    if (millis() < g_chFlashUntil)                         // 刚切换: 黄/暗闪
+      col = ((millis() / 300) & 1) ? TFT_YELLOW : TFT_DARKGREY;
+    mainCanvas.setTextColor(col, TFT_BLACK);
+    mainCanvas.setCursor(x, 79); mainCanvas.print(buf);
+  }
 
   // 6) 掉帧事件提示 (最近 5s 内出现过才显示 — 常驻会变噪音)
   if (g_last_drop_ms && millis() - g_last_drop_ms < 5000) {
