@@ -166,7 +166,7 @@ def device_screen(scale=1):
 
 def cover_cardputer(path):
     ACC = (255, 150, 40)
-    img, d = skeleton(ACC, "GBCAMS", "v0.8.8", "无线取景器")
+    img, d = skeleton(ACC, "GBCAMS", "v0.8.9", "无线取景器")
     scr = device_screen()
     img.paste(scr, (40, 38)); d.rectangle([39, 37, 280, 173], outline=(70, 70, 80))
     tags_centered(d, "ESP-NOW 25fps · 9 滤镜 · 4 相框 · 中文帮助 · SD 拍照相册", 178)
@@ -197,7 +197,7 @@ def _module(d, ACC, lens_glass=(38, 52, 74), highlight=(120, 160, 200)):
 
 def cover_cams3(path):
     ACC = (0, 220, 255)
-    img, d = skeleton(ACC, "GBCAMS", "v0.0.9", "ESP-NOW 发送端")
+    img, d = skeleton(ACC, "GBCAMS", "v0.1.1", "ESP-NOW 发送端")
     _module(d, ACC)
     d.line([(186, 44), (186, 172)], fill=(45, 48, 56))
     f0_text(d, 198, 50, "12KB x 9 PKT", 1, ACC)

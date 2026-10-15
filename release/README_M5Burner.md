@@ -2,8 +2,14 @@
 
 **GBCAMS** — 无线取景器 (接收端) + UnitCamS3 发送端
 > 项目代号 2026-09-30 起统一为 **GBCAMS**（原名 Cardputer Camera / Cardputer GB Cam）
-**版本 / Versions**: Cardputer `v0.8.8` · UnitCamS3 ESP-NOW `v0.0.9` · UnitCamS3 AP-HTTP `v0.0.1`
-**日期 / Date**: 2026-09-30
+**版本 / Versions**: Cardputer `v0.8.9` · UnitCamS3 ESP-NOW `v0.1.1` · UnitCamS3 AP-HTTP `v0.0.1`
+**日期 / Date**: 2026-10-15
+
+> **本次更新 / What's new (v0.8.9 + v0.1.1)**: **信道协商抗干扰**。接收端开机扫描 WiFi 环境，
+> 在候选信道 1/6/11 里选干扰最小的一条，通过 v2.1 beacon (`0x55 0x21 ch`) 通知发送端搬过去跟随；
+> WiFi 密集的家/办公室场景 FPS 谷底明显抬升。侧栏 HUD 常驻 `CHn` 绿色信道徽标，切换后黄闪 3s。
+> `[` `]` 手动切信道（钉住；连续 stall ~20s 自动回退 auto）。发送端加 TX 队列卡死自愈。
+> **向后兼容**：新旧版本混用可正常连接（旧 beacon 前缀 `0x55` 不变）。
 
 ---
 
@@ -11,8 +17,8 @@
 
 | 装到哪台设备 / Target | 镜像 / Image | 版本 | SHA256 (前 16) |
 |---|---|---|---|
-| **M5Cardputer** (接收端 Receiver) | `cardputer/firmware.factory.bin` (1,596,064 B) | v0.8.8 | `99b475136834bbb7…` |
-| **UnitCamS3-5MP** (发送端 Sender, 推荐) | `cams3/firmware.factory.bin` (1,058,320 B) | v0.0.9 | `fe21f1963adf6efe…` |
+| **M5Cardputer** (接收端 Receiver) | `cardputer/firmware.factory.bin` (1,599,184 B) | v0.8.9 | `cdb0532a9b8be344…` |
+| **UnitCamS3-5MP** (发送端 Sender, 推荐) | `cams3/firmware.factory.bin` (1,059,632 B) | v0.1.1 | `72ec46fd96ce4e87…` |
 | **UnitCamS3-5MP** (兼容官方 App 的发送端) | `cams3-wifi/firmware.factory.bin` (1,094,304 B) | v0.0.1 | `54a2be9b7d63578c…` |
 
 封面 / Covers: `<target>/cover-320x200.png` (320×200, M5Burner 规格)
@@ -58,6 +64,7 @@ esptool --chip esp32s3 --baud 921600 write_flash -z --flash_mode dio --flash_siz
 | `0` | 相框开关 / Frame on-off |
 | `,` `/` | 相框换款 (DMG点阵 / GBC紫 / CRT双线 / Polaroid) |
 | `-` `+` | 曝光补偿 EV −3…+3 (长按连发) |
+| `[` `]` | 手动切信道 / Channel ch6→11→1 (钉住; 侧栏 `CHn` 黄闪确认) |
 | `ENTER` | 快门 — 存 SD / Shutter |
 | `R` | 相册 / Gallery |
 | `H` | 帮助 (3 页, 中英双语) / Help |

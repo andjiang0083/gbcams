@@ -2,10 +2,17 @@
   {
     "_id": "gbcams-cams3",
     "name": "GBCAMS Sender ESP-NOW (UnitCamS3-5MP)",
-    "description": "[GBCAMS] ESP-NOW sender firmware for UnitCamS3-5MP. Sends MJPEG frames over ESP-NOW unicast (54Mbps PHY) to Cardputer receiver. Auto-discovery via beacon. ESP-NOW v2.0 large packets: ~25fps capture, 12KB frames in 9 packets (5.8x fewer than v1), ~4-5x lower frame-loss exposure.",
+    "description": "[GBCAMS] ESP-NOW sender firmware for UnitCamS3-5MP. Sends MJPEG frames over ESP-NOW unicast (54Mbps PHY) to Cardputer receiver. Auto-discovery via beacon + channel negotiation: patrols ch6/1/11 while undiscovered, follows the receiver's chosen clean channel via v2.1 beacon (0x55 0x21 ch). Self-heals TX-queue stalls. ~25fps capture, 12KB frames in 9 packets (5.8x fewer than v1), ~4-5x lower frame-loss exposure.",
     "author": "andjiang",
     "category": "timercam",
     "versions": [
+      {
+        "version": "0.1.1",
+        "published_at": "2026-10-15",
+        "file": "cams3/firmware.factory.bin",
+        "published": true,
+        "change_log": "P1-5 信道协商 + TX 卡死自愈。①beacon v2.1 (0x55 0x21 ch): 携带目标信道, 接收端主导选净信道 (开机扫描干扰最小的 1/6/11), 发送端跟随搬移; 未发现阶段在 ch6/1/11 巡逻 (每 2s 一跳), 锁定后 beacon 静默 8s 自动解锁回巡逻。②TX 队列卡死自愈: 接收端离开信道后单播帧 MAC 层无限重传灌满 espnow 发送队列 (send(): Out of memory), 连续 10 帧发不出即 esp_now_deinit+begin 整体重载清队列回巡逻 (真机复现的\"切信道后连不上\"根因)。③向后兼容: 旧接收端 (beacon 仅 0x55) 仍可在巡逻经过 ch6 时锁定"
+      },
       {
         "version": "0.0.9",
         "published_at": "2026-09-30",
@@ -41,10 +48,17 @@
   {
     "_id": "gbcams-cardputer",
     "name": "GBCAMS Receiver (M5Cardputer)",
-    "description": "Wireless camera viewfinder for M5Cardputer (GBCAMS receiver). Auto-detects CAMS3 firmware: ESP-NOW (blue label, v2.0 large packets) or stock AP-HTTP (yellow label, 12fps). Side-column HUD viewfinder (image 180x135 left + 60px status column), 9 pixel filters (incl. DMG), 4 pixel frames, race-free SD capture, photo gallery (batch delete, favorites, compare, slideshow), bilingual CN/EN help pages (h in both viewfinder and gallery).",
+    "description": "Wireless camera viewfinder for M5Cardputer (GBCAMS receiver). Auto-detects CAMS3 firmware: ESP-NOW (blue label, v2.1 large packets + channel negotiation) or stock AP-HTTP (yellow label, 12fps). Receiver-led clean-channel selection (scans interference on ch1/6/11 at boot, beacon v2.1 tells the sender where to follow; [/] manual cycle) for smoother viewfinder in WiFi-dense homes/offices. Side-column HUD (image 180x135 + status column incl. live CHn channel badge), 9 pixel filters (incl. DMG), 4 pixel frames, race-free SD capture, photo gallery (batch delete, favorites, compare, slideshow), bilingual CN/EN help pages.",
     "author": "andjiang",
     "category": "cardputer",
     "versions": [
+      {
+        "version": "0.8.9",
+        "published_at": "2026-10-15",
+        "file": "cardputer/firmware.factory.bin",
+        "published": true,
+        "change_log": "P1-5 信道协商 (抗多 WiFi 干扰) + 取景提速。①接收端主导选净信道: 开机 blocking WiFi.scanNetworks() 对候选 1/6/11 按 Σmax(0,RSSI+85) 打分选干扰最小 (当前信道 −8 bonus 防抖), beacon v2.1 (0x55 0x21 ch) 告诉发送端搬过去; 比旧版固定 ch6 明显抬升 WiFi 密集环境的 FPS 谷底。②侧栏 HUD 新增常驻 CHn 绿色信道徽标, 切换后黄闪 3s (电池模式现场可见)。③[/] 手动切信道 (6→11→1 循环, 钉住; 连续两次 stall ~20s 自动解除回 auto 防呆)。④10s 无帧 stall → 重扫信道重新协商。⑤取景提速: finishFilter 改整数索引表整块拷贝 (180×135, 与 pushRotateZoom 同像素结果), 峰值维持 18fps。⑥按键修复: [/] 补进键盘追踪表 (原键位无效)"
+      },
       {
         "version": "0.8.8",
         "published_at": "2026-09-30",
